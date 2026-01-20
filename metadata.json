@@ -1,0 +1,5 @@
+{
+  "name": "Stands FIEB/INDEX Configurator",
+  "description": "A high-performance 3D exhibition stand configurator with lead capture and Google Sheets integration, featuring procedural 3D modeling and real-time pricing calculation.",
+  "requestFramePermissions": []
+}

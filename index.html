@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stands FIEB / INDEX - Configurator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; }
+      .bg-fieb-gradient {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1e40af 100%);
+        min-height: 100vh;
+      }
+      canvas { touch-action: none; display: block; }
+      .loading-overlay {
+        position: fixed;
+        inset: 0;
+        background: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.5s ease;
+      }
+    </style>
+    <!-- Babel Standalone -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Import Map consolidado e sem conflitos de versão -->
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+    "three": "https://esm.sh/three@0.160.0",
+    "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.15.11?deps=react@18.3.1,three@0.160.0",
+    "@react-three/drei": "https://esm.sh/@react-three/drei@9.92.7?deps=react@18.3.1,three@0.160.0,@react-three/fiber@8.15.11",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "express": "https://esm.sh/express@^5.2.1",
+    "cors": "https://esm.sh/cors@^2.8.5",
+    "uuid": "https://esm.sh/uuid@^13.0.0",
+    "dotenv": "https://esm.sh/dotenv@^17.2.3"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-fieb-gradient text-white">
+    <div id="root">
+      <div class="loading-overlay" id="loader">
+        <div class="text-lime-400 font-black animate-pulse text-2xl tracking-tighter uppercase">Iniciando Configurador...</div>
+      </div>
+    </div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useMemo, useEffect, Suspense } from 'react';
+      import ReactDOM from 'react-dom/client';
+      import * as THREE from 'three';
+      import { Canvas } from '@react-three/fiber';
+      import { OrbitControls, PerspectiveCamera, Environment, ContactShadows, Text } from '@react-three/drei';
+
+      // --- TIPOS E CONSTANTES ---
+      const Category = { ASSOCIADA: 'ASSOCIADA', NAO_ASSOCIADA: 'NAO_ASSOCIADA' };
+      const ProductType = { CONSTRUIDO_9M2: 'CONSTRUIDO_9M2', CONSTRUIDO_12M2: 'CONSTRUIDO_12M2', APENAS_PISO: 'APENAS_PISO' };
+
+      const PRICING_CONFIG = {
+        products: {
+          [ProductType.CONSTRUIDO_9M2]: { label: "Stand Construído — 9 m²", associated: 11290.00, nonAssociated: 13290.00, unitLabel: "Total" },
+          [ProductType.CONSTRUIDO_12M2]: { label: "Stand Construído — 12 m²", associated: 13860.00, nonAssociated: 16310.00, unitLabel: "Total" },
+          [ProductType.APENAS_PISO]: { label: "Apenas Piso — m²", associated: 675.00, nonAssociated: 750.00, unitLabel: "Preço por m²" }
+        },
+        observation: "No valor está incluso 1 KVA de energia + Taxa de limpeza."
+      };
+
+      const COLORS = { floor: '#1d4ed8', backWall: '#0891b2', sideWall: '#bef264', pilar: '#ffffff', counter: '#ffffff', furniture: '#ffffff' };
+
+      // --- MOCK API ---
+      const submitLead = async (lead) => {
+        console.log('Enviando lead:', lead);
+        try {
+          await fetch('/api/leads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lead)
+          });
+        } catch (e) {
+          console.warn('Backend não disponível, modo simulação.');
+        }
+      };
+
+      // --- COMPONENTES 3D ---
+
+      const StandModel = ({ productType, area }) => {
+        const dims = useMemo(() => {
+          switch (productType) {
+            case ProductType.CONSTRUIDO_12M2: return { w: 4, d: 3, h: 2.8 };
+            case ProductType.CONSTRUIDO_9M2: return { w: 3, d: 3, h: 2.8 };
+            default: return { w: Math.sqrt(area || 9), d: Math.sqrt(area || 9), h: 0 };
+          }
+        }, [productType, area]);
+
+        const isBuilt = productType !== ProductType.APENAS_PISO;
+
+        return (
+          <group>
+            {/* Piso */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+              <planeGeometry args={[dims.w, dims.d]} />
+              <meshStandardMaterial color={COLORS.floor} roughness={0.7} />
+            </mesh>
+            <gridHelper args={[20, 20, 0x4444ff, 0x222244]} position={[0, 0.01, 0]} />
+            
+            {isBuilt && (
+              <>
+                <group position={[0, dims.h / 2, 0]}>
+                  {/* Paredes */}
+                  <mesh position={[0, 0, -dims.d / 2 + 0.05]} castShadow receiveShadow>
+                    <boxGeometry args={[dims.w, dims.h, 0.1]} />
+                    <meshStandardMaterial color={COLORS.backWall} />
+                  </mesh>
+                  <mesh position={[-dims.w / 2 + 0.05, 0, 0]} castShadow receiveShadow>
+                    <boxGeometry args={[0.1, dims.h, dims.d]} />
+                    <meshStandardMaterial color={COLORS.sideWall} />
+                  </mesh>
+                </group>
+                
+                {/* Estrutura Frontal */}
+                <mesh position={[-dims.w / 2 + 0.1, dims.h / 2, dims.d / 2 - 0.1]} castShadow>
+                  <boxGeometry args={[0.2, dims.h, 0.2]} />
+                  <meshStandardMaterial color={COLORS.pilar} />
+                </mesh>
+                <mesh position={[0, dims.h - 0.1, dims.d / 2 - 0.1]} castShadow>
+                  <boxGeometry args={[dims.w, 0.2, 0.15]} />
+                  <meshStandardMaterial color={COLORS.pilar} />
+                </mesh>
+
+                {/* Balcão com Texto */}
+                <group position={[dims.w / 4, 0.5, dims.d / 2 - 0.6]}>
+                  <mesh castShadow receiveShadow>
+                    <boxGeometry args={[1.2, 1, 0.6]} />
+                    <meshStandardMaterial color={COLORS.counter} />
+                  </mesh>
+                  <Text position={[0, 0, 0.31]} fontSize={0.15} color="#0f172a" anchorX="center" anchorY="middle" textAlign="center">
+                    INDEX
+                  </Text>
+                </group>
+
+                {/* Mobiliário de Reunião */}
+                <group position={[-0.4, 0.4, 0.2]} rotation={[0, Math.PI / 4, 0]}>
+                  <mesh castShadow>
+                    <cylinderGeometry args={[0.45, 0.45, 0.05, 32]} />
+                    <meshStandardMaterial color={COLORS.furniture} />
+                  </mesh>
+                  <mesh position={[0, -0.2, 0]}>
+                    <cylinderGeometry args={[0.04, 0.04, 0.4, 16]} />
+                    <meshStandardMaterial color={COLORS.furniture} />
+                  </mesh>
+                </group>
+              </>
+            )}
+          </group>
+        );
+      };
+
+      const ThreeScene = ({ productType, area }) => (
+        <Canvas shadows dpr={[1, 2]} gl={{ antialias: true, alpha: true }}>
+          <PerspectiveCamera makeDefault position={[12, 10, 12]} fov={35} />
+          <Suspense fallback={null}>
+            <group position={[0, -1.2, 0]}>
+              <StandModel productType={productType} area={area} />
+              <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={20} blur={2} far={4.5} />
+            </group>
+            <Environment preset="city" />
+          </Suspense>
+          <ambientLight intensity={0.8} />
+          <directionalLight position={[10, 10, 5]} intensity={1} castShadow shadow-mapSize={[1024, 1024]} />
+          <OrbitControls makeDefault minPolarAngle={Math.PI / 6} maxPolarAngle={Math.PI / 2.1} minDistance={6} maxDistance={20} enableDamping target={[0, 0, 0]} />
+        </Canvas>
+      );
+
+      // --- COMPONENTES DE INTERFACE ---
+
+      const Header = () => (
+        <header className="px-6 py-6 flex justify-between items-center w-full max-w-7xl mx-auto">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 bg-lime-400 rounded-lg flex items-center justify-center font-black text-blue-950 text-xl">S</div>
+            <span className="font-bold text-xl tracking-tight hidden sm:inline uppercase">Stands Index</span>
+          </div>
+          <div className="flex items-center gap-4 opacity-70 grayscale">
+            <div className="text-[10px] font-bold border border-white/20 px-2 py-1 rounded">FIEB</div>
+            <div className="text-[10px] font-bold border border-white/20 px-2 py-1 rounded">SESI</div>
+            <div className="text-[10px] font-bold border border-white/20 px-2 py-1 rounded">SENAI</div>
+          </div>
+        </header>
+      );
+
+      const Configurator = ({ product, setProduct, category, setCategory, area, setArea, price }) => {
+        const formatBRL = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+        return (
+          <div className="space-y-6">
+            <div className="bg-white/5 p-1 rounded-2xl flex gap-1 border border-white/10">
+              {Object.values(Category).map(c => (
+                <button key={c} onClick={() => setCategory(c)} className={`flex-1 py-3 px-4 rounded-xl text-sm font-bold transition-all ${category === c ? 'bg-white text-blue-950 shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}>
+                  {c === 'ASSOCIADA' ? 'Associada' : 'Não Associada'}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-3">
+              <label className="text-xs font-bold uppercase tracking-widest text-white/40 px-1">Tipo de Stand</label>
+              <div className="grid grid-cols-1 gap-2">
+                {Object.entries(PRICING_CONFIG.products).map(([key, config]) => (
+                  <button key={key} onClick={() => setProduct(key)} className={`text-left p-4 rounded-2xl border transition-all ${product === key ? 'bg-blue-600/30 border-blue-400' : 'bg-white/5 border-white/10 hover:border-white/30'}`}>
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-sm">{config.label}</span>
+                      {product === key && <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {product === ProductType.APENAS_PISO && (
+              <div className="space-y-3">
+                <label className="text-xs font-bold uppercase tracking-widest text-white/40 px-1">Área Desejada (m²)</label>
+                <div className="relative">
+                  <input type="number" min="1" max="200" value={area} onChange={(e) => setArea(Math.max(1, parseInt(e.target.value) || 0))} className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-xl font-bold focus:ring-2 focus:ring-blue-400 focus:outline-none text-white" />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-white/40">m²</span>
+                </div>
+              </div>
+            )}
+            <div className="bg-lime-400 p-6 rounded-3xl text-blue-950 shadow-2xl relative overflow-hidden group">
+              <span className="text-xs font-black uppercase tracking-tighter opacity-60">Valor Estimado</span>
+              <div className="text-4xl lg:text-5xl font-black tracking-tighter mt-1">{formatBRL(price)}</div>
+              <div className="mt-2 text-[10px] font-bold uppercase tracking-widest opacity-40">
+                {PRICING_CONFIG.products[product].unitLabel} {product === ProductType.APENAS_PISO ? `para ${area}m²` : ''}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const LeadModal = ({ isOpen, onClose, product, category, area, totalPrice }) => {
+        const [formData, setFormData] = useState({ nome: '', empresa: '', email: '', whatsapp: '', consentimento: false });
+        const [status, setStatus] = useState('idle');
+        if (!isOpen) return null;
+        
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          setStatus('loading');
+          try {
+            await submitLead({ ...formData, categoria: category, produto: product, areaM2: area, precoCalculado: totalPrice });
+            setStatus('success');
+          } catch (err) { setStatus('error'); }
+        };
+
+        const formatBRL = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+        
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-blue-950/90 backdrop-blur-xl animate-in fade-in duration-300">
+            <div className="bg-slate-900 w-full max-w-xl rounded-[40px] border border-white/10 shadow-2xl flex flex-col max-h-[90vh]">
+              <div className="p-8 border-b border-white/5 flex justify-between items-start">
+                <div><h2 className="text-3xl font-black uppercase tracking-tighter text-lime-400 leading-none">Quero Expor</h2></div>
+                <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+              </div>
+              <div className="flex-grow overflow-y-auto p-8 space-y-6">
+                {status === 'success' ? (
+                  <div className="text-center py-12 space-y-4">
+                    <div className="w-16 h-16 bg-lime-400 rounded-full flex items-center justify-center mx-auto text-blue-950 font-bold">✓</div>
+                    <h3 className="text-2xl font-black uppercase">Enviado com sucesso!</h3>
+                    <p className="text-white/60">Entraremos em contato em breve.</p>
+                    <button onClick={onClose} className="w-full mt-6 py-4 bg-white text-blue-950 font-bold rounded-full">Fechar</button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <input required placeholder="Nome Completo" className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white" value={formData.nome} onChange={e => setFormData({...formData, nome: e.target.value})} />
+                    <input required placeholder="Empresa" className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white" value={formData.empresa} onChange={e => setFormData({...formData, empresa: e.target.value})} />
+                    <input required type="email" placeholder="E-mail Corporativo" className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                    <input required placeholder="WhatsApp" className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white" value={formData.whatsapp} onChange={e => setFormData({...formData, whatsapp: e.target.value})} />
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input required type="checkbox" className="mt-1" checked={formData.consentimento} onChange={e => setFormData({...formData, consentimento: e.target.checked})} />
+                      <span className="text-xs text-white/50">Aceito os termos de processamento de dados (LGPD).</span>
+                    </label>
+                    <button type="submit" disabled={status === 'loading'} className="w-full py-5 bg-lime-400 text-blue-950 font-black rounded-full text-xl shadow-xl uppercase transition-transform hover:scale-[1.02] active:scale-95">
+                      {status === 'loading' ? 'Processando...' : 'Confirmar Interesse'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // --- APP PRINCIPAL ---
+
+      const App = () => {
+        const [selectedProduct, setSelectedProduct] = useState(ProductType.CONSTRUIDO_9M2);
+        const [selectedCategory, setSelectedCategory] = useState(Category.ASSOCIADA);
+        const [area, setArea] = useState(9);
+        const [isModalOpen, setIsModalOpen] = useState(false);
+
+        useEffect(() => {
+          const loader = document.getElementById('loader');
+          if (loader) {
+            setTimeout(() => {
+              loader.style.opacity = '0';
+              setTimeout(() => loader.remove(), 500);
+            }, 800);
+          }
+        }, []);
+
+        const calculatedPrice = useMemo(() => {
+          const config = PRICING_CONFIG.products[selectedProduct];
+          const basePrice = selectedCategory === Category.ASSOCIADA ? config.associated : config.nonAssociated;
+          return selectedProduct === ProductType.APENAS_PISO ? basePrice * area : basePrice;
+        }, [selectedProduct, selectedCategory, area]);
+
+        return (
+          <div className="flex flex-col min-h-screen">
+            <Header />
+            <main className="flex-grow flex flex-col lg:flex-row p-4 lg:p-8 gap-8 max-w-7xl mx-auto w-full">
+              {/* Visualização 3D */}
+              <div className="w-full lg:w-2/3 h-[450px] lg:h-[650px] bg-slate-900/40 rounded-[2.5rem] border border-white/10 overflow-hidden relative shadow-2xl">
+                <ThreeScene productType={selectedProduct} area={area} />
+                <div className="absolute top-6 left-6 z-10 flex gap-2">
+                  <button onClick={() => window.location.reload()} className="px-5 py-2.5 bg-white/10 backdrop-blur-md rounded-full text-[10px] font-black border border-white/20 hover:bg-white/20 transition-all uppercase tracking-widest">Resetar Visão</button>
+                </div>
+              </div>
+              
+              {/* Configurações e Preço */}
+              <div className="w-full lg:w-1/3 space-y-6">
+                <h1 className="text-4xl font-black uppercase leading-tight tracking-tighter">
+                  Configure seu <br /><span className="text-lime-400">Stand INDEX</span>
+                </h1>
+                <Configurator 
+                  product={selectedProduct} 
+                  setProduct={setSelectedProduct} 
+                  category={selectedCategory} 
+                  setCategory={setSelectedCategory} 
+                  area={area} 
+                  setArea={setArea} 
+                  price={calculatedPrice} 
+                />
+                <button onClick={() => setIsModalOpen(true)} className="w-full py-6 bg-lime-400 text-blue-950 font-black rounded-full text-2xl shadow-xl hover:scale-105 transition-transform uppercase tracking-widest active:scale-95">Quero ser Expositor</button>
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/10 text-[10px] text-white/40 italic uppercase tracking-wider text-center">{PRICING_CONFIG.observation}</div>
+              </div>
+            </main>
+            <footer className="py-8 text-center text-white/20 text-[10px] uppercase tracking-[0.2em]">&copy; {new Date().getFullYear()} INDEX Stands para FIEB • Bahia</footer>
+            
+            <LeadModal 
+              isOpen={isModalOpen} 
+              onClose={() => setIsModalOpen(false)} 
+              product={selectedProduct} 
+              category={selectedCategory} 
+              area={area} 
+              totalPrice={calculatedPrice} 
+            />
+          </div>
+        );
+      };
+
+      // --- RENDERIZAÇÃO ---
+      const rootElement = document.getElementById('root');
+      const root = ReactDOM.createRoot(rootElement);
+      root.render(<App />);
+    </script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
